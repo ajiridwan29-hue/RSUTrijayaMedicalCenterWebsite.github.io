@@ -6,7 +6,7 @@
     <title>RSU Trijaya Medical Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script>
         tailwind.config = {
             theme: {
@@ -133,7 +133,7 @@
                     <div class="text-justify text-gray-600">
                         <ol class="space-y-2">
                             <li>1. Menyelenggarakan pelayanan yang prima dan profesional.</li>
-                            <li>2. Menggunakan tata kelola manajerial yang profesional dan taat hukum.</li> 
+                            <li>2. Menggunakan tata kelola manajerial yang profesional and taat hukum.</li> 
                             <li>3. Menjadikan pusat rujukan pelayanan kesehatan.</li>
                             <li>4. Meningkatkan sumber daya manusia profesional dan berorientasi pada kepuasan pelanggan serta mengutamakan keselamatan pasien.</li>
                             <li>5. Menggunakan sistem informasi & teknologi kedokteran modern guna menunjang pelayanan untuk meningkatkan efektivitas kerja.</li>
@@ -276,6 +276,49 @@
             </div>
         </div>
     </section>
+
+    <!-- FLOATING CHATBOT BUTTON AND CHAT PANEL (AI Assistant) -->
+    <button id="chatbotToggle" onclick="window.toggleChat()" class="fixed bottom-6 right-6 z-50 bg-secondary text-white p-4 rounded-full shadow-2xl hover:bg-orange-600 transition-all hover:scale-110 flex items-center justify-center w-14 h-14 border-2 border-white">
+        <i class="fa-solid fa-robot text-2xl"></i>
+    </button>
+
+    <div id="chatModal" class="fixed bottom-24 right-6 w-[340px] sm:w-[380px] bg-white rounded-3xl shadow-2xl z-50 hidden border border-gray-100 overflow-hidden flex flex-col max-h-[500px]">
+        <!-- Chat Header -->
+        <div class="bg-primary p-4 text-white flex justify-between items-center shadow-md">
+            <div class="flex items-center gap-3">
+                <div class="bg-white/10 p-2 rounded-xl">
+                    <i class="fa-solid fa-user-doctor text-lg"></i>
+                </div>
+                <div>
+                    <span class="font-bold text-sm block">Pakar Kesihatan AI</span>
+                    <span class="text-[10px] text-emerald-300 flex items-center gap-1 font-semibold">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Online
+                    </span>
+                </div>
+            </div>
+            <button onclick="window.toggleChat()" class="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+        <!-- Chat Area -->
+        <div id="chatBox" class="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50 h-80 max-h-80">
+            <div class="flex gap-2.5 items-start">
+                <div class="bg-primary text-white p-2 rounded-xl text-xs mt-1">
+                    <i class="fa-solid fa-hospital-user"></i>
+                </div>
+                <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm text-xs text-gray-700 max-w-[80%] leading-relaxed">
+                    Halo! Saya asisten kesehatan AI RSU Trijaya. Ada yang bisa saya bantu terkait jadwal dokter, fasilitas rumah sakit, atau tips kesehatan hari ini?
+                </div>
+            </div>
+        </div>
+        <!-- Chat Input Form -->
+        <div class="p-3 bg-white border-t border-gray-100 flex gap-2">
+            <input id="chatInput" type="text" onkeydown="if(event.key === 'Enter') window.sendChatMessage()" class="flex-1 border border-gray-200 p-2.5 rounded-xl text-xs focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition" placeholder="Ketik pertanyaan medis Anda...">
+            <button onclick="window.sendChatMessage()" class="bg-primary text-white px-4 py-2.5 rounded-xl hover:bg-blue-800 transition flex items-center justify-center">
+                <i class="fa-solid fa-paper-plane text-xs"></i>
+            </button>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer id="kontak" class="bg-dark text-white pt-16 pb-8 border-t border-gray-800">
@@ -932,6 +975,107 @@
             setTimeout(() => {
                 window.open(`https://wa.me/62${num}?text=${text}`, "_blank");
             }, 800);
+        };
+
+        // --- AI CHATBOT CONTROLLERS WITH EXPONENTIAL RETRY ---
+        window.toggleChat = () => {
+            const modal = document.getElementById('chatModal');
+            modal.classList.toggle('hidden');
+        };
+
+        window.sendChatMessage = async () => {
+            const input = document.getElementById('chatInput');
+            const chatBox = document.getElementById('chatBox');
+            const queryText = input.value.trim();
+            if (!queryText) return;
+
+            // Render Patient message
+            chatBox.innerHTML += `
+                <div class="flex gap-2.5 items-start justify-end">
+                    <div class="bg-blue-100 text-primary p-3 rounded-2xl rounded-tr-none shadow-sm text-xs max-w-[80%] leading-relaxed font-medium">
+                        ${queryText}
+                    </div>
+                </div>
+            `;
+            input.value = '';
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Generate temporary AI Typing bubble
+            const typingId = `typing_${Date.now()}`;
+            chatBox.innerHTML += `
+                <div id="${typingId}" class="flex gap-2.5 items-start">
+                    <div class="bg-primary text-white p-2 rounded-xl text-xs mt-1">
+                        <i class="fa-solid fa-hospital-user"></i>
+                    </div>
+                    <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm text-xs text-gray-500 max-w-[80%] flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
+                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                    </div>
+                </div>
+            `;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // Gemini API call with exponential retry
+            const executeGeminiCall = async (query, retries = 5, delay = 1000) => {
+                const apiKey = ""; // Auth key injected securely during execution context
+                const modelEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                
+                try {
+                    const response = await fetch(modelEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: query }] }],
+                            systemInstruction: {
+                                parts: [{
+                                    text: `Anda adalah asisten medis kecerdasan buatan profesional dari ${siteSettings.name}. 
+                                    Berikan informasi umum kesehatan, arah lokasi, informasi poli, jam buka, dan penawaran layanan medis dengan sopan, ramah, dan profesional dalam Bahasa Indonesia yang formal. 
+                                    Alamat rumah sakit: Jl. Lintas Baturaja No. 541, Tanjung Enim, Kec. Lawang Kidul, Kabupaten Muara Enim, Sumatera Selatan 31712. Nomor kontak WhatsApp: ${siteSettings.waNumber}.`
+                                }]
+                            }
+                        })
+                    });
+
+                    if (!response.ok) throw new Error(`Fetch status: ${response.status}`);
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+                } catch (error) {
+                    if (retries > 0) {
+                        await new Promise(res => setTimeout(res, delay));
+                        return executeGeminiCall(query, retries - 1, delay * 2);
+                    }
+                    throw error;
+                }
+            };
+
+            try {
+                const aiResponse = await executeGeminiCall(queryText);
+                document.getElementById(typingId).remove();
+                
+                chatBox.innerHTML += `
+                    <div class="flex gap-2.5 items-start">
+                        <div class="bg-primary text-white p-2 rounded-xl text-xs mt-1 flex-shrink-0">
+                            <i class="fa-solid fa-hospital-user"></i>
+                        </div>
+                        <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm text-xs text-gray-700 max-w-[80%] leading-relaxed">
+                            ${aiResponse}
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                if (document.getElementById(typingId)) {
+                    document.getElementById(typingId).remove();
+                }
+                chatBox.innerHTML += `
+                    <div class="flex gap-2.5 items-start justify-center">
+                        <div class="bg-red-50 border border-red-200 text-red-600 p-2.5 rounded-xl text-xs font-medium">
+                            Koneksi AI terputus. Silakan coba sesaat lagi atau langsung hubungi pendaftaran via WhatsApp.
+                        </div>
+                    </div>
+                `;
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
         };
 
         document.getElementById('mobile-menu-button').addEventListener('click', () => {
