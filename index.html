@@ -133,7 +133,7 @@
                     <div class="text-justify text-gray-600">
                         <ol class="space-y-2">
                             <li>1. Menyelenggarakan pelayanan yang prima dan profesional.</li>
-                            <li>2. Menggunakan tata kelola manajerial yang profesional and taat hukum.</li> 
+                            <li>2. Menggunakan tata kelola manajerial yang profesional dan taat hukum.</li> 
                             <li>3. Menjadikan pusat rujukan pelayanan kesehatan.</li>
                             <li>4. Meningkatkan sumber daya manusia profesional dan berorientasi pada kepuasan pelanggan serta mengutamakan keselamatan pasien.</li>
                             <li>5. Menggunakan sistem informasi & teknologi kedokteran modern guna menunjang pelayanan untuk meningkatkan efektivitas kerja.</li>
@@ -165,7 +165,7 @@
             </div>
             
             <div id="services-container" class="grid md:grid-cols-3 gap-8">
-                <!-- Data dimasukkan secara dinamik melalui Firebase -->
+                <!-- Data dimasukkan secara dinamik melalui Firebase/LocalStorage -->
             </div>
         </div>
     </section>
@@ -187,7 +187,7 @@
             </div>
 
             <div id="doctors-container" class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <!-- Data dimasukkan secara dinamik melalui Firebase -->
+                <!-- Data dimasukkan secara dinamik melalui Firebase/LocalStorage -->
             </div>
         </div>
     </section>
@@ -482,30 +482,29 @@
         </div>
     </div>
 
-    <!-- Firebase Integration Module Script -->
+    <!-- Firebase Integration Module Script (Versi GitHub / Standalone) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-        // Konfigurasi Firebase yang disambungkan ke pangkalan data rsutrijaya-c22a5
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : {
-                apiKey: "", 
-                authDomain: "rsutrijaya-c22a5.firebaseapp.com",
-                databaseURL: "https://rsutrijaya-c22a5-default-rtdb.firebaseio.com/",
-                projectId: "rsutrijaya-c22a5",
-                storageBucket: "rsutrijaya-c22a5.appspot.com",
-                messagingSenderId: "384758291029",
-                appId: "1:384758291029:web:9c1a2b3c4d5e6f"
-              };
+        // =========================================================================
+        // KONFIGURASI FIREBASE UNTUK GITHUB PAGES
+        // PENTING: Anda MESTI memasukkan `apiKey` sebenar dari Firebase Console anda 
+        // untuk membolehkan pangkalan data berfungsi di luar platform ini.
+        // =========================================================================
+        const firebaseConfig = {
+            apiKey: "SILA_MASUKKAN_API_KEY_FIREBASE_ANDA_DI_SINI", // <-- WAJIB TUKAR INI!
+            authDomain: "rsutrijaya-c22a5.firebaseapp.com",
+            databaseURL: "https://rsutrijaya-c22a5-default-rtdb.firebaseio.com/",
+            projectId: "rsutrijaya-c22a5",
+            storageBucket: "rsutrijaya-c22a5.appspot.com",
+            messagingSenderId: "SENDER_ID", // Pilihan
+            appId: "APP_ID" // Pilihan
+        };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'rsu-trijaya-medical-center';
-
+        let app, auth, db;
+        let isFirebaseConnected = false;
         let isAdmin = false;
         let doctorsData = [];
         let servicesData = [];
@@ -514,6 +513,8 @@
             desc: "RSU Trijaya Medical Center selalu menyediakan fasilitas modern, tenaga medis profesional, dan perawatan penuh kasih.",
             waNumber: "82374111666"
         };
+
+        const appId = 'rsu-trijaya-medical-center';
 
         const ui = {
             toast: document.getElementById('toast'),
@@ -557,95 +558,142 @@
             }, 3000);
         };
 
-        // Memulakan sesi pengesahan (Auth) terlebih dahulu sebelum membuat query (RULE 3)
-        const initAuthAndSync = async () => {
+        // Permulaan Aplikasi pada GitHub
+        const initGitHubApp = async () => {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
+                // Periksa jika API Key belum ditukar
+                if(firebaseConfig.apiKey.includes("SILA_MASUKKAN")) {
+                    console.warn("API Key belum disetkan! Laman web akan menggunakan mode Offline (LocalStorage).");
+                    fallbackToLocalStorage();
+                    return;
                 }
-            } catch (err) {
-                console.error("Auth Fail:", err);
-            }
 
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    setupFirebaseListeners();
-                }
-            });
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getDatabase(app);
+
+                // Log masuk tanpa nama untuk mengakses Realtime Database
+                await signInAnonymously(auth);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        isFirebaseConnected = true;
+                        setupFirebaseRealtimeListeners();
+                        console.log("Berjaya bersambung ke Firebase RTDB!");
+                    } else {
+                        fallbackToLocalStorage();
+                    }
+                });
+            } catch (err) {
+                console.warn("Gagal bersambung ke Firebase. Beralih ke LocalStorage.", err);
+                fallbackToLocalStorage();
+            }
         };
 
-        // Menyediakan pendengar masa nyata Firebase Firestore (RULE 1 & RULE 2)
-        function setupFirebaseListeners() {
-            if (!auth.currentUser) return;
+        // Mod Luar Talian (Offline Fallback)
+        function fallbackToLocalStorage() {
+            isFirebaseConnected = false;
+            
+            const savedDoctors = localStorage.getItem('rs_doctors');
+            const savedServices = localStorage.getItem('rs_services');
+            const savedSettings = localStorage.getItem('rs_settings');
 
-            // Strict collection path matching rule 1
-            const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'siteSettings', 'global');
-            const servicesColRef = collection(db, 'artifacts', appId, 'public', 'data', 'services');
-            const doctorsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'doctors');
+            if (savedDoctors) doctorsData = JSON.parse(savedDoctors);
+            if (savedServices) servicesData = JSON.parse(savedServices);
+            if (savedSettings) siteSettings = JSON.parse(savedSettings);
 
-            // 1. Settings Real-time Sync
-            onSnapshot(settingsDocRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    siteSettings = docSnap.data();
+            if (doctorsData.length === 0) seedInitialDoctorsLocal();
+            if (servicesData.length === 0) seedInitialServicesLocal();
+
+            updateUIWithSettings();
+            renderDoctors();
+            renderServices();
+        }
+
+        // --- FIREBASE REALTIME DATABASE SYNC ---
+        function setupFirebaseRealtimeListeners() {
+            const settingsDbRef = ref(db, `public/data/siteSettings/global`);
+            const servicesDbRef = ref(db, `public/data/services`);
+            const doctorsDbRef = ref(db, `public/data/doctors`);
+
+            // 1. Settings Sync
+            onValue(settingsDbRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    siteSettings = snapshot.val();
                     updateUIWithSettings();
                 } else {
-                    // Seed default settings on cloud
-                    setDoc(settingsDocRef, siteSettings).catch(e => console.error("Settings write error:", e));
+                    set(settingsDbRef, siteSettings);
                     updateUIWithSettings();
                 }
-            }, (err) => console.error("Settings Listen Error:", err));
+            }, (err) => {
+                console.error("Ralat membaca tetapan:", err);
+                fallbackToLocalStorage();
+            });
 
-            // 2. Services Real-time Sync
-            onSnapshot(servicesColRef, (snapshot) => {
+            // 2. Services Sync
+            onValue(servicesDbRef, (snapshot) => {
                 servicesData = [];
-                snapshot.forEach((doc) => {
-                    servicesData.push({ id: doc.id, ...doc.data() });
-                });
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    Object.keys(data).forEach(key => {
+                        servicesData.push({ id: key, ...data[key] });
+                    });
+                }
                 if (servicesData.length === 0) {
-                    seedInitialServices();
+                    seedInitialServicesFirebase(servicesDbRef);
                 } else {
                     renderServices();
                 }
-            }, (err) => console.error("Services Listen Error:", err));
+            });
 
-            // 3. Doctors Real-time Sync
-            onSnapshot(doctorsColRef, (snapshot) => {
+            // 3. Doctors Sync
+            onValue(doctorsDbRef, (snapshot) => {
                 doctorsData = [];
-                snapshot.forEach((doc) => {
-                    doctorsData.push({ id: doc.id, ...doc.data() });
-                });
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    Object.keys(data).forEach(key => {
+                        doctorsData.push({ id: key, ...data[key] });
+                    });
+                }
                 if (doctorsData.length === 0) {
-                    seedInitialDoctors();
+                    seedInitialDoctorsFirebase(doctorsDbRef);
                 } else {
                     renderDoctors();
                 }
-            }, (err) => console.error("Doctors Listen Error:", err));
+            });
         }
 
-        async function seedInitialDoctors() {
-            const initialDocs = [
-                { name: "Dr. Budi Santoso", specialty: "Dokter Umum", schedule: "Senin - Jumat: 08:00 - 15:00", photoUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" },
-                { name: "Dr. Siti Aminah, Sp.A", specialty: "Spesialis Anak", schedule: "Selasa - Sabtu: 09:00 - 14:00", photoUrl: "https://images.unsplash.com/photo-1594824436998-ef220b30ffeb?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" },
-                { name: "Dr. Andi Wijaya, Sp.JP", specialty: "Spesialis Jantung", schedule: "Senin, Rabu, Jumat: 10:00 - 16:00", photoUrl: "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" }
+        // --- PENYEDIA DATA AWAL LOKAL (SEEDERS) ---
+        function seedInitialDoctorsLocal() {
+            doctorsData = [
+                { id: '1', name: "Dr. Budi Santoso", specialty: "Dokter Umum", schedule: "Senin - Jumat: 08:00 - 15:00", photoUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" },
+                { id: '2', name: "Dr. Siti Aminah, Sp.A", specialty: "Spesialis Anak", schedule: "Selasa - Sabtu: 09:00 - 14:00", photoUrl: "https://images.unsplash.com/photo-1594824436998-ef220b30ffeb?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" }
             ];
-            for (const docInfo of initialDocs) {
-                const newDocRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'doctors'));
-                await setDoc(newDocRef, docInfo);
-            }
+            localStorage.setItem('rs_doctors', JSON.stringify(doctorsData));
         }
 
-        async function seedInitialServices() {
-            const initialSrvs = [
-                { name: "Pemeriksaan Umum", desc: "Layanan kesehatan rutin untuk segala usia dan penanganan penyakit umum.", icon: "fa-stethoscope" },
-                { name: "Klinik Gigi", desc: "Perawatan kesehatan mulut komprehensif oleh dokter gigi berpengalaman.", icon: "fa-tooth" },
-                { name: "Klinik Anak", desc: "Pemantauan tumbuh kembang dan imunisasi untuk bayi dan anak.", icon: "fa-baby" }
+        function seedInitialServicesLocal() {
+            servicesData = [
+                { id: '1', name: "Pemeriksaan Umum", desc: "Layanan kesehatan rutin untuk segala usia dan penanganan penyakit umum.", icon: "fa-stethoscope" },
+                { id: '2', name: "Klinik Gigi", desc: "Perawatan kesehatan mulut komprehensif oleh dokter gigi berpengalaman.", icon: "fa-tooth" }
             ];
-            for (const srvInfo of initialSrvs) {
-                const newSrvRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'services'));
-                await setDoc(newSrvRef, srvInfo);
-            }
+            localStorage.setItem('rs_services', JSON.stringify(servicesData));
+        }
+
+        function seedInitialDoctorsFirebase(dbRef) {
+            const initial = {
+                'doc1': { name: "Dr. Budi Santoso", specialty: "Dokter Umum", schedule: "Senin - Jumat: 08:00 - 15:00", photoUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" },
+                'doc2': { name: "Dr. Siti Aminah, Sp.A", specialty: "Spesialis Anak", schedule: "Selasa - Sabtu: 09:00 - 14:00", photoUrl: "https://images.unsplash.com/photo-1594824436998-ef220b30ffeb?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" }
+            };
+            set(dbRef, initial);
+        }
+
+        function seedInitialServicesFirebase(dbRef) {
+            const initial = {
+                'srv1': { name: "Pemeriksaan Umum", desc: "Layanan kesehatan rutin.", icon: "fa-stethoscope" },
+                'srv2': { name: "Klinik Gigi", desc: "Perawatan gigi profesional.", icon: "fa-tooth" }
+            };
+            set(dbRef, initial);
         }
 
         function updateUIWithSettings() {
@@ -670,30 +718,31 @@
 
         window.saveSettings = async (e) => {
             e.preventDefault();
-            if (!auth.currentUser) return;
-
             const btn = document.getElementById('setSubmitBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+            btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
 
-            const updatedSettings = {
+            const updated = {
                 name: document.getElementById('setRsName').value,
                 desc: document.getElementById('setRsDesc').value,
                 waNumber: document.getElementById('setWaNumber').value
             };
 
-            try {
-                const settingsDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'siteSettings', 'global');
-                await setDoc(settingsDocRef, updatedSettings, { merge: true });
-                window.closeSettingsModal();
-                window.showToast("Pengaturan berhasil disimpan di Firebase");
-            } catch (err) {
-                console.error("Settings write error:", err);
-                window.showToast("Gagal menyimpan pengaturan", "error");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Simpan Pengaturan';
+            if (isFirebaseConnected) {
+                try {
+                    await set(ref(db, `public/data/siteSettings/global`), updated);
+                    window.showToast("Pengaturan disimpan ke Firebase!");
+                } catch (err) {
+                    window.showToast("Ralat menyimpan. Pastikan Rule Database membenarkan Write.", "error");
+                }
+            } else {
+                siteSettings = updated;
+                localStorage.setItem('rs_settings', JSON.stringify(siteSettings));
+                updateUIWithSettings();
+                window.showToast("Disimpan secara lokal!");
             }
+
+            window.closeSettingsModal();
+            btn.disabled = false; btn.innerHTML = 'Simpan Pengaturan';
         };
 
         function renderServices() {
@@ -749,43 +798,52 @@
 
         window.saveService = async (e) => {
             e.preventDefault();
-            if (!auth.currentUser) return;
-
             const btn = document.getElementById('srvSubmitBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+            btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
 
-            const id = document.getElementById('serviceId').value;
+            const id = document.getElementById('serviceId').value || `srv_${Date.now()}`;
             const data = {
                 name: document.getElementById('srvName').value,
                 desc: document.getElementById('srvDesc').value,
                 icon: document.getElementById('srvIcon').value
             };
 
-            try {
-                const docRef = id 
-                    ? doc(db, 'artifacts', appId, 'public', 'data', 'services', id) 
-                    : doc(collection(db, 'artifacts', appId, 'public', 'data', 'services'));
-                await setDoc(docRef, data, { merge: true });
-                window.closeServiceModal();
-                window.showToast(id ? "Layanan diperbarui" : "Layanan ditambahkan");
-            } catch (err) {
-                console.error("Service save error:", err);
-                window.showToast("Gagal menyimpan layanan", "error");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Simpan Layanan';
+            if (isFirebaseConnected) {
+                try {
+                    await set(ref(db, `public/data/services/${id}`), data);
+                    window.showToast("Layanan disimpan ke Firebase!");
+                } catch (err) {
+                    window.showToast("Ralat! Semak Rule Firebase.", "error");
+                }
+            } else {
+                const existingIndex = servicesData.findIndex(s => s.id === id);
+                if (existingIndex !== -1) {
+                    servicesData[existingIndex] = { id, ...data };
+                } else {
+                    servicesData.push({ id, ...data });
+                }
+                localStorage.setItem('rs_services', JSON.stringify(servicesData));
+                renderServices();
+                window.showToast("Disimpan secara lokal!");
             }
+
+            window.closeServiceModal();
+            btn.disabled = false; btn.innerHTML = 'Simpan Layanan';
         };
 
         window.deleteService = async (id) => {
-            if (!auth.currentUser) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'services', id));
-                window.showToast("Layanan dihapus");
-            } catch (error) {
-                console.error(error);
-                window.showToast("Gagal menghapus", "error");
+            if (isFirebaseConnected) {
+                try {
+                    await set(ref(db, `public/data/services/${id}`), null);
+                    window.showToast("Layanan dihapus dari Firebase!");
+                } catch (err) {
+                    window.showToast("Gagal menghapus.", "error");
+                }
+            } else {
+                servicesData = servicesData.filter(s => s.id !== id);
+                localStorage.setItem('rs_services', JSON.stringify(servicesData));
+                renderServices();
+                window.showToast("Layanan dihapus secara lokal!");
             }
         };
 
@@ -891,7 +949,6 @@
             ui.docModal.classList.replace('hidden', 'flex');
         };
 
-        // Resize & Convert Image to Base64
         document.getElementById('docPhoto').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -927,13 +984,10 @@
 
         window.saveDoctor = async (e) => {
             e.preventDefault();
-            if (!auth.currentUser) return;
-
             const btn = document.getElementById('docSubmitBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+            btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
 
-            const id = document.getElementById('doctorId').value;
+            const id = document.getElementById('doctorId').value || `doc_${Date.now()}`;
             const data = {
                 name: document.getElementById('docName').value,
                 specialty: document.getElementById('docSpecialty').value,
@@ -941,30 +995,42 @@
                 photoUrl: document.getElementById('docPhotoBase64').value
             };
 
-            try {
-                const docRef = id 
-                    ? doc(db, 'artifacts', appId, 'public', 'data', 'doctors', id) 
-                    : doc(collection(db, 'artifacts', appId, 'public', 'data', 'doctors'));
-                await setDoc(docRef, data, { merge: true });
-                window.closeDoctorModal();
-                window.showToast(id ? "Data dokter diperbarui" : "Dokter baru ditambahkan");
-            } catch (err) {
-                console.error("Doctor save error:", err);
-                window.showToast("Gagal menyimpan data dokter", "error");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = 'Simpan Data';
+            if (isFirebaseConnected) {
+                try {
+                    await set(ref(db, `public/data/doctors/${id}`), data);
+                    window.showToast("Dokter disimpan ke Firebase!");
+                } catch (err) {
+                    window.showToast("Gagal menyimpan. Semak Rule Database.", "error");
+                }
+            } else {
+                const existingIndex = doctorsData.findIndex(d => d.id === id);
+                if (existingIndex !== -1) {
+                    doctorsData[existingIndex] = { id, ...data };
+                } else {
+                    doctorsData.push({ id, ...data });
+                }
+                localStorage.setItem('rs_doctors', JSON.stringify(doctorsData));
+                renderDoctors();
+                window.showToast("Disimpan secara lokal!");
             }
+
+            window.closeDoctorModal();
+            btn.disabled = false; btn.innerHTML = 'Simpan Data';
         };
 
         window.deleteDoctor = async (id) => {
-            if (!auth.currentUser) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'doctors', id));
-                window.showToast("Dokter berhasil dihapus");
-            } catch (error) {
-                console.error(error);
-                window.showToast("Gagal menghapus dokter", "error");
+            if (isFirebaseConnected) {
+                try {
+                    await set(ref(db, `public/data/doctors/${id}`), null);
+                    window.showToast("Dokter dipadam dari Firebase!");
+                } catch (err) {
+                    window.showToast("Gagal menghapus.", "error");
+                }
+            } else {
+                doctorsData = doctorsData.filter(d => d.id !== id);
+                localStorage.setItem('rs_doctors', JSON.stringify(doctorsData));
+                renderDoctors();
+                window.showToast("Dihapus secara lokal.");
             }
         };
 
@@ -977,104 +1043,18 @@
             }, 800);
         };
 
-        // --- AI CHATBOT CONTROLLERS WITH EXPONENTIAL RETRY ---
+        // --- AI CHATBOT (Dimatikan sementara API key tiada, atau anda boleh letak key sendiri) ---
         window.toggleChat = () => {
             const modal = document.getElementById('chatModal');
             modal.classList.toggle('hidden');
         };
-
         window.sendChatMessage = async () => {
             const input = document.getElementById('chatInput');
             const chatBox = document.getElementById('chatBox');
-            const queryText = input.value.trim();
-            if (!queryText) return;
-
-            // Render Patient message
-            chatBox.innerHTML += `
-                <div class="flex gap-2.5 items-start justify-end">
-                    <div class="bg-blue-100 text-primary p-3 rounded-2xl rounded-tr-none shadow-sm text-xs max-w-[80%] leading-relaxed font-medium">
-                        ${queryText}
-                    </div>
-                </div>
-            `;
+            if (!input.value.trim()) return;
+            chatBox.innerHTML += `<div class="flex gap-2.5 items-start justify-end"><div class="bg-blue-100 text-primary p-3 rounded-2xl rounded-tr-none shadow-sm text-xs max-w-[80%]">${input.value}</div></div>`;
             input.value = '';
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            // Generate temporary AI Typing bubble
-            const typingId = `typing_${Date.now()}`;
-            chatBox.innerHTML += `
-                <div id="${typingId}" class="flex gap-2.5 items-start">
-                    <div class="bg-primary text-white p-2 rounded-xl text-xs mt-1">
-                        <i class="fa-solid fa-hospital-user"></i>
-                    </div>
-                    <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm text-xs text-gray-500 max-w-[80%] flex items-center gap-1">
-                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
-                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                    </div>
-                </div>
-            `;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            // Gemini API call with exponential retry
-            const executeGeminiCall = async (query, retries = 5, delay = 1000) => {
-                const apiKey = ""; // Auth key injected securely during execution context
-                const modelEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                
-                try {
-                    const response = await fetch(modelEndpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: query }] }],
-                            systemInstruction: {
-                                parts: [{
-                                    text: `Anda adalah asisten medis kecerdasan buatan profesional dari ${siteSettings.name}. 
-                                    Berikan informasi umum kesehatan, arah lokasi, informasi poli, jam buka, dan penawaran layanan medis dengan sopan, ramah, dan profesional dalam Bahasa Indonesia yang formal. 
-                                    Alamat rumah sakit: Jl. Lintas Baturaja No. 541, Tanjung Enim, Kec. Lawang Kidul, Kabupaten Muara Enim, Sumatera Selatan 31712. Nomor kontak WhatsApp: ${siteSettings.waNumber}.`
-                                }]
-                            }
-                        })
-                    });
-
-                    if (!response.ok) throw new Error(`Fetch status: ${response.status}`);
-                    const data = await response.json();
-                    return data.candidates?.[0]?.content?.parts?.[0]?.text;
-                } catch (error) {
-                    if (retries > 0) {
-                        await new Promise(res => setTimeout(res, delay));
-                        return executeGeminiCall(query, retries - 1, delay * 2);
-                    }
-                    throw error;
-                }
-            };
-
-            try {
-                const aiResponse = await executeGeminiCall(queryText);
-                document.getElementById(typingId).remove();
-                
-                chatBox.innerHTML += `
-                    <div class="flex gap-2.5 items-start">
-                        <div class="bg-primary text-white p-2 rounded-xl text-xs mt-1 flex-shrink-0">
-                            <i class="fa-solid fa-hospital-user"></i>
-                        </div>
-                        <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm text-xs text-gray-700 max-w-[80%] leading-relaxed">
-                            ${aiResponse}
-                        </div>
-                    </div>
-                `;
-            } catch (err) {
-                if (document.getElementById(typingId)) {
-                    document.getElementById(typingId).remove();
-                }
-                chatBox.innerHTML += `
-                    <div class="flex gap-2.5 items-start justify-center">
-                        <div class="bg-red-50 border border-red-200 text-red-600 p-2.5 rounded-xl text-xs font-medium">
-                            Koneksi AI terputus. Silakan coba sesaat lagi atau langsung hubungi pendaftaran via WhatsApp.
-                        </div>
-                    </div>
-                `;
-            }
+            chatBox.innerHTML += `<div class="flex gap-2.5 items-start"><div class="bg-red-50 text-red-600 p-2.5 rounded-xl text-xs font-medium">Sistem AI memerlukan API Key rasmi untuk berfungsi sepenuhnya di luar platform. Sila hubungi pendaftaran via WhatsApp.</div></div>`;
             chatBox.scrollTop = chatBox.scrollHeight;
         };
 
@@ -1082,7 +1062,8 @@
             document.getElementById('mobile-menu').classList.toggle('hidden');
         });
 
-        window.onload = initAuthAndSync;
+        // Mula secara automatik
+        window.onload = initGitHubApp;
     </script>
 </body>
 </html>
